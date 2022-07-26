@@ -1,0 +1,70 @@
+trigger:
+  - master
+
+stages:
+  - stage: 'BuildTest'
+    displayName: 'Build and Test'
+    variables:
+      GOVERSION: '1.17'
+      CGO ENABLED: '0'
+      GOOS: 'linux'
+      GOARCH: 'amd64'
+    jobs:
+      - job:
+        displayName: 'Build and Test Go Backend'
+        pool:
+          vmImage: 'ubuntu 18.04'
+        steps:
+          - task: GoTool@0
+            inputs:
+              version: $(GOVERSION)
+            displayName: 'Install and select GO version'
+
+          - script: |
+              go get -u github.com/jstemmer/go-junit-report 2>&1
+              go get -u github.com/axw/gocov/gocov 2>&1
+              go get -u github.com/AlekSi/gocov-xml 2>&1
+
+              go test ./mathalgorithms -v -coverprofile=demo-coverage.txt -covermode count 2>&1 | $HOME/go/bin/go-junit-report > demo-report.xml
+              rc = ${PIPESTATUS[0]}
+
+              $HOME/go/bin/gocov convert demo-coverage.txt > demo-coverage.json
+              $HOME/go/bin/gocov-xml < demo-coverage.json > demo-coverage.xml
+
+              if  [ $rc -ne 0 ]
+              then
+              >&2 echo "Tests failed"
+              fi
+            displayName: 'Run unit test and convert results'
+            failOnStderr: true
+
+
+          - task: Go@0
+            inputs:
+              command: 'build'
+              arguments: '-a -o demo'
+            displayName: 'Build go App'
+
+          - publish: '$(Build.SourcesDirectory)/demo'
+            artifact: 'Executable'
+            displayName: 'Publis pipeline artifact'
+          
+          - task: PublishTestResults@2
+            condition: always()
+            inputs:
+              testResultsFormat: 'Junit'
+              testResultsFiles: '*report*.xml'
+              searchFolder: '$(Build.SourcesDirectory)'
+            displayName: 'Publish test Results'
+          
+          - task: PublishCodeCoverageResults@1
+            condition: always()
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: '$(Build.SourcesDirectory)/demo-coverage.xml'
+            displayName: 'Publish code coverage results'
+           
+
+
+
+
